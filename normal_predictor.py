@@ -5,8 +5,6 @@ import numpy as np
 import torch
 from PIL import Image, ImageOps
 
-dependencies = ["torch", "numpy", "stablenormal", "diffusers", "PIL"]
-
 from stablenormal.pipeline_stablenormal import StableNormalPipeline
 from stablenormal.pipeline_yoso_normal import YOSONormalsPipeline
 from stablenormal.scheduler.heuristics_ddimsampler import HEURI_DDIMScheduler
@@ -32,7 +30,10 @@ def pad_to_square(
     return padded_image, image.size, padding
 
 
-def resize_image(image: Image.Image, resolution: int) -> Tuple[Image.Image, Tuple[int, int], Tuple[float, float]]:
+def resize_image(
+    image: Image.Image,
+    resolution: int,
+) -> Tuple[Image.Image, Tuple[int, int], Tuple[float, float]]:
     """Resize the image while maintaining aspect ratio and then pad to nearest multiple of 64."""
     if not isinstance(image, Image.Image):
         raise ValueError("Expected a PIL Image object")
@@ -107,11 +108,8 @@ class Predictor:
         pred_normal = (pipe_out.prediction.clip(-1, 1) + 1) / 2
         pred_normal = (pred_normal[0] * 255).astype(np.uint8)
         pred_normal = Image.fromarray(pred_normal)
-
-        new_dims = (
-            int(original_dims[1]),
-            int(original_dims[0]),
-        )  # reverse the shape (width, height)
+        # reverse the shape (width, height)
+        new_dims = (int(original_dims[1]), int(original_dims[0]))
         pred_normal = pred_normal.resize(new_dims, Image.Resampling.LANCZOS)
 
         if preprocess == "pad":
@@ -172,44 +170,6 @@ def StableNormal(
     return Predictor(pipe)
 
 
-def StableNormal_turbo(
-    local_cache_dir: Optional[str] = None,
-    device="cuda:0",
-    yoso_version="yoso-normal-v0-3",
-) -> Predictor:
-    """Load the StableNormal_turbo pipeline for a faster inference."""
-
-    yoso_weight_path = os.path.join(local_cache_dir if local_cache_dir else "Stable-X", yoso_version)
-    pipe = YOSONormalsPipeline.from_pretrained(
-        yoso_weight_path,
-        trust_remote_code=True,
-        safety_checker=None,
-        variant="fp16",
-        torch_dtype=torch.float16,
-        t_start=0,
-    ).to(device)
-
-    return Predictor(pipe)
-
-
-def _test_run():
-    import argparse
-
-    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument("--input", "-i", type=str, required=True, help="Input image file")
-    parser.add_argument("--output", "-o", type=str, required=True, help="Output image file")
-    parser.add_argument("--mode", type=str, default="StableNormal_turbo", help="Mode of operation")
-
-    args = parser.parse_args()
-
-    predictor_func = StableNormal_turbo if args.mode == "StableNormal_turbo" else StableNormal
-    predictor = predictor_func(local_cache_dir="./weights", device="cuda:0")
-
-    image = Image.open(args.input)
-    with torch.inference_mode():
-        normal_image = predictor(image)
-    normal_image.save(args.output)
-
-
 if __name__ == "__main__":
-    _test_run()
+    model_path = "/mnt/nas/share-all/caizebin/04.model/nerf"
+    predictor = StableNormal(model_path)

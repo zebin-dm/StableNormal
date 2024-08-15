@@ -9,7 +9,7 @@ apt update
 apt --yes full-upgrade
 apt install --yes wget curl git zsh tmux htop vim ccache subversion gdb build-essential unzip \
 	software-properties-common locales tzdata apt-transport-https openssh-server libgtest-dev \
-	python3-pip libzstd-dev
+	python3-pip libzstd-dev git-lfs
 # for opencv
  apt-get update && apt-get install ffmpeg libsm6 libxext6  -y
 

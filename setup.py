@@ -7,6 +7,7 @@ README = (setup_path / "README.md").read_text(encoding="utf-8")
 with open("README.md", "r") as fh:
     long_description = fh.read()
 
+
 def split_requirements(requirements):
     install_requires = []
     dependency_links = []
@@ -18,15 +19,16 @@ def split_requirements(requirements):
 
     return install_requires, dependency_links
 
+
 with open("./requirements.txt", "r") as f:
     requirements = f.read().splitlines()
 
 install_requires, dependency_links = split_requirements(requirements)
 
 setup(
-    name = "stablenormal",
+    name="stablenormal",
     packages=find_packages(),
     description=long_description,
     long_description=README,
-    install_requires=install_requires
+    install_requires=install_requires,
 )
