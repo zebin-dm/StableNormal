@@ -170,6 +170,61 @@ def StableNormal(
     return Predictor(pipe)
 
 
+def generate_normal_for_arsession(predictor, data_path):
+    img_pathes = f"{data_path}/images"
+    normal_pathes = f"{data_path}/stable_normal"
+    normal_pathes_npy = f"{data_path}/stable_normal_npy"
+    os.makedirs(normal_pathes, exist_ok=True)
+    os.makedirs(normal_pathes_npy, exist_ok=True)
+    im_names = os.listdir(img_pathes)
+    for idx, im_name in enumerate(im_names):
+        if not im_name.endswith(".jpg"):
+            continue
+        im_path = f"{img_pathes}/{im_name}"
+        rgb_img = Image.open(im_path)
+        normal_img = predictor(rgb_img)
+        normal_img.save(f"{normal_pathes}/{im_name}")
+
+        img_np = np.array(normal_img).astype(float)
+        img_np = (img_np / 255.0) * 2 - 1
+        save_path = f"{normal_pathes_npy}/{im_name.replace('.jpg', '.npy')}"
+        np.save(save_path, img_np)
+
+
+def visualize_depth_normal(data_path):
+    ori_normal_path = f"{data_path}/normal"
+    dst_normal_path = f"{data_path}/depth_normal"
+    os.makedirs(dst_normal_path, exist_ok=True)
+    im_names = os.listdir(ori_normal_path)
+    for idx, im_name in enumerate(im_names):
+        im_path = f"{ori_normal_path}/{im_name}"
+        image = np.load(im_path)
+        pred_normal = (image.clip(-1, 1) + 1) / 2
+        pred_normal = (pred_normal * 255).astype(np.uint8)
+        pred_normal = Image.fromarray(pred_normal)
+        save_path = f"{dst_normal_path}/{im_name.replace('.npy', '.jpg')}"
+        pred_normal.save(save_path)
+
+
+def normal_image_to_npy(data_path):
+    ori_normal_path = f"{data_path}/stable_normal"
+    dst_normal_path = f"{data_path}/stable_normal_npy"
+    os.makedirs(dst_normal_path, exist_ok=True)
+    im_names = os.listdir(ori_normal_path)
+    for idx, im_name in enumerate(im_names):
+        im_path = f"{ori_normal_path}/{im_name}"
+        img = Image.open(im_path)
+        img = np.array(img).astype(float)
+        img = (img / 255.0) * 2 - 1
+        save_path = f"{dst_normal_path}/{im_name.replace('.jpg', '.npy')}"
+        np.save(save_path, img)
+
+
 if __name__ == "__main__":
+    data_path = "/mnt/nas/share-all/caizebin/03.dataset/nerf/benchmark/OPPO_tower"
     model_path = "/mnt/nas/share-all/caizebin/04.model/nerf"
+
     predictor = StableNormal(model_path)
+    generate_normal_for_arsession(predictor, data_path)
+    # visualize_depth_normal(data_path)
+    # normal_image_to_npy(data_path)
