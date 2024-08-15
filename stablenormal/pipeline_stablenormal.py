@@ -31,9 +31,7 @@ from diffusers.models import (
     UNet2DConditionModel,
     ControlNetModel,
 )
-from diffusers.schedulers import (
-    DDIMScheduler
-)
+from diffusers.schedulers import DDIMScheduler
 
 from diffusers.utils import (
     BaseOutput,
@@ -46,7 +44,6 @@ from diffusers.models.unets.unet_2d_condition import UNet2DConditionOutput
 from diffusers.utils import USE_PEFT_BACKEND, BaseOutput, deprecate, logging, scale_lora_layers, unscale_lora_layers
 
 
-
 from diffusers.utils.torch_utils import randn_tensor
 from diffusers.pipelines.controlnet import StableDiffusionControlNetPipeline
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
@@ -55,7 +52,6 @@ from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionS
 import torch.nn.functional as F
 
 import pdb
-
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -101,22 +97,25 @@ class StableNormalOutput(BaseOutput):
     latent: Union[None, torch.Tensor]
     gaus_noise: Union[None, torch.Tensor]
 
-from einops import rearrange  
+
+from einops import rearrange
+
+
 class DINOv2_Encoder(torch.nn.Module):
     IMAGENET_DEFAULT_MEAN = [0.485, 0.456, 0.406]
     IMAGENET_DEFAULT_STD = [0.229, 0.224, 0.225]
 
     def __init__(
         self,
-        model_name = 'dinov2_vitl14',
-        freeze = True,
+        model_name="dinov2_vitl14",
+        freeze=True,
         antialias=True,
         device="cuda",
-        size = 448,
+        size=448,
     ):
         super(DINOv2_Encoder, self).__init__()
-        
-        self.model = torch.hub.load('facebookresearch/dinov2', model_name)
+
+        self.model = torch.hub.load("facebookresearch/dinov2", model_name)
         self.model.eval().to(device)
         self.device = device
         self.antialias = antialias
@@ -128,35 +127,33 @@ class DINOv2_Encoder(torch.nn.Module):
         if freeze:
             self.freeze()
 
-
     def freeze(self):
         for param in self.model.parameters():
             param.requires_grad = False
 
     @torch.no_grad()
     def encoder(self, x):
-        '''
+        """
         x: [b h w c], range from (-1, 1), rbg
-        '''
+        """
 
         x = self.preprocess(x).to(self.device, self.dtype)
 
         b, c, h, w = x.shape
         patch_h, patch_w = h // 14, w // 14
 
-        embeddings = self.model.forward_features(x)['x_norm_patchtokens']
-        embeddings = rearrange(embeddings, 'b (h w) c -> b h w c', h = patch_h, w = patch_w)
+        embeddings = self.model.forward_features(x)["x_norm_patchtokens"]
+        embeddings = rearrange(embeddings, "b (h w) c -> b h w c", h=patch_h, w=patch_w)
 
-        return  rearrange(embeddings, 'b h w c -> b c h w')
+        return rearrange(embeddings, "b h w c -> b c h w")
 
     def preprocess(self, x):
-        ''' x
-        '''
+        """x"""
         # normalize to [0,1],
         x = torch.nn.functional.interpolate(
             x,
             size=(self.size, self.size),
-            mode='bicubic',
+            mode="bicubic",
             align_corners=True,
             antialias=self.antialias,
         )
@@ -168,7 +165,7 @@ class DINOv2_Encoder(torch.nn.Module):
         x = (x - mean) / std
 
         return x
-    
+
     def to(self, device, dtype=None):
         if dtype is not None:
             self.dtype = dtype
@@ -184,8 +181,9 @@ class DINOv2_Encoder(torch.nn.Module):
     def __call__(self, x, **kwargs):
         return self.encoder(x, **kwargs)
 
+
 class StableNormalPipeline(StableDiffusionControlNetPipeline):
-    """ Pipeline for monocular normals estimation using the Marigold method: https://marigoldmonodepth.github.io.
+    """Pipeline for monocular normals estimation using the Marigold method: https://marigoldmonodepth.github.io.
     Pipeline for text-to-image generation using Stable Diffusion with ControlNet guidance.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
@@ -227,8 +225,6 @@ class StableNormalPipeline(StableDiffusionControlNetPipeline):
     _exclude_from_cpu_offload = ["safety_checker"]
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
 
-
-
     def __init__(
         self,
         vae: AutoencoderKL,
@@ -258,14 +254,14 @@ class StableNormalPipeline(StableDiffusionControlNetPipeline):
             feature_extractor,
             image_encoder,
             requires_safety_checker,
-                )
+        )
 
         self.register_modules(
             dino_controlnet=dino_controlnet,
         )
 
         self.image_processor = MarigoldImageProcessor(vae_scale_factor=self.vae_scale_factor)
-        self.dino_image_processor = lambda x: x / 127.5 -1.
+        self.dino_image_processor = lambda x: x / 127.5 - 1.0
 
         self.default_denoising_steps = default_denoising_steps
         self.default_processing_resolution = default_processing_resolution
@@ -516,7 +512,6 @@ class StableNormalPipeline(StableDiffusionControlNetPipeline):
         if processing_resolution is None:
             processing_resolution = self.default_processing_resolution
 
-
         image, padding, original_resolution = self.image_processor.preprocess(
             image, processing_resolution, resample_method_input, device, dtype
         )  # [N,3,PPH,PPW]
@@ -526,8 +521,9 @@ class StableNormalPipeline(StableDiffusionControlNetPipeline):
         )  # [N,4,h,w], [N,4,h,w]
 
         # 0. X_start latent obtain
-        predictor = self.x_start_pipeline(image, latents=gaus_noise, 
-                                          processing_resolution=processing_resolution, skip_preprocess=True)
+        predictor = self.x_start_pipeline(
+            image, latents=gaus_noise, processing_resolution=processing_resolution, skip_preprocess=True
+        )
         x_start_latent = predictor.latent
 
         # 1. Check inputs.
@@ -546,7 +542,6 @@ class StableNormalPipeline(StableDiffusionControlNetPipeline):
             output_uncertainty,
         )
 
-
         # 2. Prepare empty text conditioning.
         # Model invocation: self.tokenizer, self.text_encoder.
         if self.empty_text_embedding is None:
@@ -560,8 +555,6 @@ class StableNormalPipeline(StableDiffusionControlNetPipeline):
             )
             text_input_ids = text_inputs.input_ids.to(device)
             self.empty_text_embedding = self.text_encoder(text_input_ids)[0]  # [1,2,1024]
-
-
 
         # 3. prepare prompt
         if self.prompt_embeds is None:
@@ -579,24 +572,20 @@ class StableNormalPipeline(StableDiffusionControlNetPipeline):
             self.prompt_embeds = prompt_embeds
             self.negative_prompt_embeds = negative_prompt_embeds
 
-
-
         # 5. dino guider features obtaining
         ## TODO different case-1
         dino_features = self.prior(image)
         dino_features = self.dino_controlnet.dino_controlnet_cond_embedding(dino_features)
         dino_features = self.match_noisy(dino_features, x_start_latent)
 
-        del (
-                image,
-        )
+        del (image,)
 
         # 7. denoise sampling, using heuritic sampling proposed by Ye.
 
         t_start = self.x_start_pipeline.t_start
-        self.scheduler.set_timesteps(num_inference_steps, t_start=t_start,device=device)
+        self.scheduler.set_timesteps(num_inference_steps, t_start=t_start, device=device)
 
-        cond_scale =controlnet_conditioning_scale
+        cond_scale = controlnet_conditioning_scale
         pred_latent = x_start_latent
 
         cur_step = 0
@@ -604,7 +593,7 @@ class StableNormalPipeline(StableDiffusionControlNetPipeline):
         # dino controlnet
         dino_down_block_res_samples, dino_mid_block_res_sample = self.dino_controlnet(
             dino_features.detach(),
-            0, # not depend on time steps
+            0,  # not depend on time steps
             encoder_hidden_states=self.prompt_embeds,
             conditioning_scale=cond_scale,
             guess_mode=False,
@@ -615,9 +604,12 @@ class StableNormalPipeline(StableDiffusionControlNetPipeline):
         pred_latents = []
 
         last_pred_latent = pred_latent
-        for (t, prev_t) in self.progress_bar(zip(self.scheduler.timesteps,self.scheduler.prev_timesteps), leave=False, desc="Diffusion steps..."):
-
-            _dino_down_block_res_samples = [dino_down_block_res_sample for dino_down_block_res_sample in dino_down_block_res_samples]  # copy, avoid repeat quiery
+        for t, prev_t in self.progress_bar(
+            zip(self.scheduler.timesteps, self.scheduler.prev_timesteps), leave=False, desc="Diffusion steps..."
+        ):
+            _dino_down_block_res_samples = [
+                dino_down_block_res_sample for dino_down_block_res_sample in dino_down_block_res_samples
+            ]  # copy, avoid repeat quiery
 
             # controlnet
             down_block_res_samples, mid_block_res_sample = self.controlnet(
@@ -637,15 +629,21 @@ class StableNormalPipeline(StableDiffusionControlNetPipeline):
                 encoder_hidden_states=self.prompt_embeds,
                 down_block_additional_residuals=down_block_res_samples,
                 mid_block_additional_residual=mid_block_res_sample,
-                dino_down_block_additional_residuals= _dino_down_block_res_samples,
+                dino_down_block_additional_residuals=_dino_down_block_res_samples,
                 return_dict=False,
             )[0]  # [B,4,h,w]
 
             pred_latents.append(noise)
             # ddim steps
             out = self.scheduler.step(
-                noise, t, prev_t, pred_latent, gaus_noise = gaus_noise, generator=generator, cur_step=cur_step+1  # NOTE that cur_step dirs to next_step
-            )# [B,4,h,w]
+                noise,
+                t,
+                prev_t,
+                pred_latent,
+                gaus_noise=gaus_noise,
+                generator=generator,
+                cur_step=cur_step + 1,  # NOTE that cur_step dirs to next_step
+            )  # [B,4,h,w]
             pred_latent = out.prev_sample
 
             cur_step += 1
@@ -659,7 +657,9 @@ class StableNormalPipeline(StableDiffusionControlNetPipeline):
         # decoder
         prediction = self.decode_prediction(pred_latent)
         prediction = self.image_processor.unpad_image(prediction, padding)  # [N*E,3,PH,PW]
-        prediction = self.image_processor.resize_antialias(prediction, original_resolution, resample_method_output, is_aa=False)  # [N,3,H,W]
+        prediction = self.image_processor.resize_antialias(
+            prediction, original_resolution, resample_method_output, is_aa=False
+        )  # [N,3,H,W]
 
         if match_input_resolution:
             prediction = self.image_processor.resize_antialias(
@@ -679,11 +679,7 @@ class StableNormalPipeline(StableDiffusionControlNetPipeline):
         # 11. Offload all models
         self.maybe_free_model_hooks()
 
-        return StableNormalOutput(
-            prediction=prediction,
-            latent=pred_latent,
-            gaus_noise=gaus_noise
-        )
+        return StableNormalOutput(prediction=prediction, latent=pred_latent, gaus_noise=gaus_noise)
 
     # Copied from diffusers.pipelines.marigold.pipeline_marigold_depth.MarigoldDepthPipeline.prepare_latents
     def prepare_latents(
@@ -702,8 +698,6 @@ class StableNormalPipeline(StableDiffusionControlNetPipeline):
             else:
                 raise AttributeError("Could not access latents of provided encoder_output")
 
-
-
         image_latent = torch.cat(
             [
                 retrieve_latents(self.vae.encode(image[i : i + batch_size]))
@@ -716,8 +710,6 @@ class StableNormalPipeline(StableDiffusionControlNetPipeline):
 
         pred_latent = latents
         if pred_latent is None:
-
-
             pred_latent = randn_tensor(
                 image_latent.shape,
                 generator=generator,
@@ -749,22 +741,13 @@ class StableNormalPipeline(StableDiffusionControlNetPipeline):
 
     @staticmethod
     def match_noisy(dino, noisy):
-        _, __, dino_h, dino_w =  dino.shape
-        _, __, h, w =  noisy.shape
+        _, __, dino_h, dino_w = dino.shape
+        _, __, h, w = noisy.shape
 
         if h == dino_h and w == dino_w:
             return dino
         else:
-            return F.interpolate(dino, (h, w), mode='bilinear')
-
-
-
-
-
-
-
-
-
+            return F.interpolate(dino, (h, w), mode="bilinear")
 
     @staticmethod
     def dino_unet_forward(
@@ -832,7 +815,6 @@ class StableNormalPipeline(StableDiffusionControlNetPipeline):
         # The overall upsampling factor is equal to 2 ** (# num of upsampling layers).
         # However, the upsampling interpolation output size can be forced to fit any upsampling size
         # on the fly if necessary.
-
 
         default_overall_up_factor = 2**self.num_upsamplers
 
@@ -939,12 +921,13 @@ class StableNormalPipeline(StableDiffusionControlNetPipeline):
             down_intrablock_additional_residuals = down_block_additional_residuals
             is_adapter = True
 
-
-
         def residual_downforward(
-            self, hidden_states: torch.Tensor, temb: Optional[torch.Tensor] = None,
+            self,
+            hidden_states: torch.Tensor,
+            temb: Optional[torch.Tensor] = None,
             additional_residuals: Optional[torch.Tensor] = None,
-            *args, **kwargs,
+            *args,
+            **kwargs,
         ) -> Tuple[torch.Tensor, Tuple[torch.Tensor, ...]]:
             if len(args) > 0 or kwargs.get("scale", None) is not None:
                 deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
@@ -973,7 +956,6 @@ class StableNormalPipeline(StableDiffusionControlNetPipeline):
                     hidden_states = resnet(hidden_states, temb)
                     hidden_states += additional_residuals.pop(0)
 
-
                 output_states = output_states + (hidden_states,)
 
             if self.downsamplers is not None:
@@ -984,7 +966,6 @@ class StableNormalPipeline(StableDiffusionControlNetPipeline):
                 output_states = output_states + (hidden_states,)
 
             return hidden_states, output_states
-
 
         def residual_blockforward(
             self,  ## NOTE that repurpose to unet_blocks
@@ -998,9 +979,9 @@ class StableNormalPipeline(StableDiffusionControlNetPipeline):
         ) -> Tuple[torch.Tensor, Tuple[torch.Tensor, ...]]:
             if cross_attention_kwargs is not None:
                 if cross_attention_kwargs.get("scale", None) is not None:
-                    logger.warning("Passing `scale` to `cross_attention_kwargs` is deprecated. `scale` will be ignored.")
-
-
+                    logger.warning(
+                        "Passing `scale` to `cross_attention_kwargs` is deprecated. `scale` will be ignored."
+                    )
 
             output_states = ()
 
@@ -1057,7 +1038,6 @@ class StableNormalPipeline(StableDiffusionControlNetPipeline):
 
             return hidden_states, output_states
 
-
         down_intrablock_additional_residuals = dino_down_block_additional_residuals
 
         sample += down_intrablock_additional_residuals.pop(0)
@@ -1065,7 +1045,6 @@ class StableNormalPipeline(StableDiffusionControlNetPipeline):
 
         for downsample_block in self.down_blocks:
             if hasattr(downsample_block, "has_cross_attention") and downsample_block.has_cross_attention:
-
                 sample, res_samples = residual_blockforward(
                     downsample_block,
                     hidden_states=sample,
@@ -1074,7 +1053,7 @@ class StableNormalPipeline(StableDiffusionControlNetPipeline):
                     attention_mask=attention_mask,
                     cross_attention_kwargs=cross_attention_kwargs,
                     encoder_attention_mask=encoder_attention_mask,
-                    additional_residuals = down_intrablock_additional_residuals,
+                    additional_residuals=down_intrablock_additional_residuals,
                 )
 
             else:
@@ -1082,12 +1061,10 @@ class StableNormalPipeline(StableDiffusionControlNetPipeline):
                     downsample_block,
                     hidden_states=sample,
                     temb=emb,
-                    additional_residuals = down_intrablock_additional_residuals,
-                        )
-
+                    additional_residuals=down_intrablock_additional_residuals,
+                )
 
             down_block_res_samples += res_samples
-
 
         if is_controlnet:
             new_down_block_res_samples = ()
@@ -1171,8 +1148,6 @@ class StableNormalPipeline(StableDiffusionControlNetPipeline):
 
         return UNet2DConditionOutput(sample=sample)
 
-
-
     @staticmethod
     def ensemble_normals(
         normals: torch.Tensor, output_uncertainty: bool, reduction: str = "closest"
@@ -1218,6 +1193,7 @@ class StableNormalPipeline(StableDiffusionControlNetPipeline):
         closest_normals = torch.gather(normals, 0, closest_indices)  # [1,3,H,W]
 
         return closest_normals, uncertainty  # [1,3,H,W], [1,1,H,W]
+
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(

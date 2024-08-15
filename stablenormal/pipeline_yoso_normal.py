@@ -29,11 +29,9 @@ from diffusers.image_processor import PipelineImageInput
 from diffusers.models import (
     AutoencoderKL,
     UNet2DConditionModel,
-	ControlNetModel,
+    ControlNetModel,
 )
-from diffusers.schedulers import (
-	DDIMScheduler
-)
+from diffusers.schedulers import DDIMScheduler
 
 from diffusers.utils import (
     BaseOutput,
@@ -49,7 +47,6 @@ from diffusers.pipelines.marigold.marigold_image_processing import MarigoldImage
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 
 import pdb
-
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -97,7 +94,7 @@ class YosoNormalsOutput(BaseOutput):
 
 
 class YOSONormalsPipeline(StableDiffusionControlNetPipeline):
-    """ Pipeline for monocular normals estimation using the Marigold method: https://marigoldmonodepth.github.io.
+    """Pipeline for monocular normals estimation using the Marigold method: https://marigoldmonodepth.github.io.
     Pipeline for text-to-image generation using Stable Diffusion with ControlNet guidance.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
@@ -139,8 +136,6 @@ class YOSONormalsPipeline(StableDiffusionControlNetPipeline):
     _exclude_from_cpu_offload = ["safety_checker"]
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
 
-
-
     def __init__(
         self,
         vae: AutoencoderKL,
@@ -154,7 +149,7 @@ class YOSONormalsPipeline(StableDiffusionControlNetPipeline):
         image_encoder: CLIPVisionModelWithProjection = None,
         requires_safety_checker: bool = True,
         default_denoising_steps: Optional[int] = 1,
-		default_processing_resolution: Optional[int] = 768,
+        default_processing_resolution: Optional[int] = 768,
         prompt="",
         empty_text_embedding=None,
         t_start: Optional[int] = 401,
@@ -170,7 +165,7 @@ class YOSONormalsPipeline(StableDiffusionControlNetPipeline):
             feature_extractor,
             image_encoder,
             requires_safety_checker,
-                )
+        )
 
         # TODO yoso ImageProcessor
         self.image_processor = MarigoldImageProcessor(vae_scale_factor=self.vae_scale_factor)
@@ -180,7 +175,7 @@ class YOSONormalsPipeline(StableDiffusionControlNetPipeline):
         self.prompt = prompt
         self.prompt_embeds = None
         self.empty_text_embedding = empty_text_embedding
-        self.t_start= t_start # target_out latents
+        self.t_start = t_start  # target_out latents
 
     def check_inputs(
         self,
@@ -442,7 +437,6 @@ class YOSONormalsPipeline(StableDiffusionControlNetPipeline):
             output_uncertainty,
         )
 
-
         # 2. Prepare empty text conditioning.
         # Model invocation: self.tokenizer, self.text_encoder.
         if self.empty_text_embedding is None:
@@ -456,8 +450,6 @@ class YOSONormalsPipeline(StableDiffusionControlNetPipeline):
             )
             text_input_ids = text_inputs.input_ids.to(device)
             self.empty_text_embedding = self.text_encoder(text_input_ids)[0]  # [1,2,1024]
-
-
 
         # 3. prepare prompt
         if self.prompt_embeds is None:
@@ -474,8 +466,6 @@ class YOSONormalsPipeline(StableDiffusionControlNetPipeline):
             )
             self.prompt_embeds = prompt_embeds
             self.negative_prompt_embeds = negative_prompt_embeds
-
-
 
         # 4. Preprocess input images. This function loads input image or images of compatible dimensions `(H, W)`,
         # optionally downsamples them to the `processing_resolution` `(PH, PW)`, where
@@ -509,10 +499,9 @@ class YOSONormalsPipeline(StableDiffusionControlNetPipeline):
         gaus_noise = pred_latent.detach().clone()
         del image
 
-
         # 6. obtain control_output
 
-        cond_scale =controlnet_conditioning_scale
+        cond_scale = controlnet_conditioning_scale
         down_block_res_samples, mid_block_res_sample = self.controlnet(
             image_latent.detach(),
             self.t_start,
@@ -531,7 +520,6 @@ class YOSONormalsPipeline(StableDiffusionControlNetPipeline):
             mid_block_additional_residual=mid_block_res_sample,
             return_dict=False,
         )[0]
-
 
         del (
             pred_latent,
@@ -575,8 +563,6 @@ class YOSONormalsPipeline(StableDiffusionControlNetPipeline):
                 return encoder_output.latents
             else:
                 raise AttributeError("Could not access latents of provided encoder_output")
-
-
 
         image_latent = torch.cat(
             [
@@ -666,6 +652,7 @@ class YOSONormalsPipeline(StableDiffusionControlNetPipeline):
         closest_normals = torch.gather(normals, 0, closest_indices)  # [1,3,H,W]
 
         return closest_normals, uncertainty  # [1,3,H,W], [1,1,H,W]
+
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(

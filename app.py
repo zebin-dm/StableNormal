@@ -28,6 +28,7 @@ import imageio as imageio
 import numpy as np
 import spaces
 import torch as torch
+
 torch.backends.cuda.matmul.allow_tf32 = True
 from PIL import Image
 from gradio_imageslider import ImageSlider
@@ -39,6 +40,7 @@ from gradio.utils import get_cache_folder
 from stablenormal.pipeline_yoso_normal import YOSONormalsPipeline
 from stablenormal.pipeline_stablenormal import StableNormalPipeline
 from stablenormal.scheduler.heuristics_ddimsampler import HEURI_DDIMScheduler
+
 
 class Examples(gradio.helpers.Examples):
     def __init__(self, *args, directory_name=None, **kwargs):
@@ -58,11 +60,11 @@ default_video_num_inference_steps = 10
 default_video_processing_resolution = 768
 default_video_out_max_frames = 60
 
+
 def process_image_check(path_input):
     if path_input is None:
-        raise gr.Error(
-            "Missing image in the first pane: upload a file or use one from the gallery below."
-        )
+        raise gr.Error("Missing image in the first pane: upload a file or use one from the gallery below.")
+
 
 def resize_image(input_image, resolution):
     # Ensure input_image is a PIL Image object
@@ -76,20 +78,21 @@ def resize_image(input_image, resolution):
     H, W, C = input_image_np.shape
     H = float(H)
     W = float(W)
-    
+
     # Calculate the scaling factor
     k = float(resolution) / min(H, W)
-    
+
     # Determine new dimensions
     H *= k
     W *= k
     H = int(np.round(H / 64.0)) * 64
     W = int(np.round(W / 64.0)) * 64
-    
+
     # Resize the image using PIL's resize method
     img = input_image.resize((W, H), Image.Resampling.LANCZOS)
-    
+
     return img
+
 
 def process_image(
     pipe,
@@ -103,30 +106,28 @@ def process_image(
     input_image = Image.open(path_input)
     input_image = resize_image(input_image, default_image_processing_resolution)
 
-    pipe_out = pipe(
-        input_image,
-        match_input_resolution=False,
-        processing_resolution=max(input_image.size)
-    )
+    pipe_out = pipe(input_image, match_input_resolution=False, processing_resolution=max(input_image.size))
 
     normal_pred = pipe_out.prediction[0, :, :]
     normal_colored = pipe.image_processor.visualize_normals(pipe_out.prediction)
     normal_colored[-1].save(path_out_png)
     yield [input_image, path_out_png]
 
+
 def center_crop(img):
     # Open the image file
     img_width, img_height = img.size
-    crop_width =min(img_width, img_height)
+    crop_width = min(img_width, img_height)
     # Calculate the cropping box
     left = (img_width - crop_width) / 2
     top = (img_height - crop_width) / 2
     right = (img_width + crop_width) / 2
     bottom = (img_height + crop_width) / 2
-    
+
     # Crop the image
     img_cropped = img.crop((left, top, right, bottom))
     return img_cropped
+
 
 def process_video(
     pipe,
@@ -136,9 +137,7 @@ def process_video(
     progress=gr.Progress(),
 ):
     if path_input is None:
-        raise gr.Error(
-            "Missing video in the first pane: upload a file or use one from the gallery below."
-        )
+        raise gr.Error("Missing video in the first pane: upload a file or use one from the gallery below.")
 
     name_base, name_ext = os.path.splitext(os.path.basename(path_input))
     print(f"Processing video {name_base}{name_ext}")
@@ -172,11 +171,7 @@ def process_video(
 
             frame_pil = Image.fromarray(frame)
             frame_pil = center_crop(frame_pil)
-            pipe_out = pipe(
-                frame_pil,
-                match_input_resolution=False,
-                latents=init_latents
-            )
+            pipe_out = pipe(frame_pil, match_input_resolution=False, latents=init_latents)
 
             if init_latents is None:
                 init_latents = pipe_out.gaus_noise
@@ -187,13 +182,12 @@ def process_video(
 
             _processed_frame = imageio.core.util.Array(processed_frame)
             writer.append_data(_processed_frame)
-            
+
             yield (
                 [frame_pil, processed_frame],
                 None,
             )
     finally:
-
         if writer is not None:
             writer.close()
 
@@ -202,15 +196,15 @@ def process_video(
 
     yield (
         [frame_pil, processed_frame],
-        [path_out_vis,]
+        [
+            path_out_vis,
+        ],
     )
 
 
 def run_demo_server(pipe):
     process_pipe_image = spaces.GPU(functools.partial(process_image, pipe))
-    process_pipe_video = spaces.GPU(
-        functools.partial(process_video, pipe), duration=120
-    )
+    process_pipe_video = spaces.GPU(functools.partial(process_video, pipe), duration=120)
 
     gradio_theme = gr.themes.Default()
 
@@ -274,9 +268,7 @@ def run_demo_server(pipe):
                             type="filepath",
                         )
                         with gr.Row():
-                            image_submit_btn = gr.Button(
-                                value="Compute Normal", variant="primary"
-                            )
+                            image_submit_btn = gr.Button(value="Compute Normal", variant="primary")
                             image_reset_btn = gr.Button(value="Reset")
                     with gr.Column():
                         image_output_slider = ImageSlider(
@@ -291,10 +283,9 @@ def run_demo_server(pipe):
 
                 Examples(
                     fn=process_pipe_image,
-                    examples=sorted([
-                        os.path.join("files", "image", name)
-                        for name in os.listdir(os.path.join("files", "image"))
-                    ]),
+                    examples=sorted(
+                        [os.path.join("files", "image", name) for name in os.listdir(os.path.join("files", "image"))]
+                    ),
                     inputs=[image_input],
                     outputs=[image_output_slider],
                     cache_examples=True,
@@ -309,9 +300,7 @@ def run_demo_server(pipe):
                             sources=["upload", "webcam"],
                         )
                         with gr.Row():
-                            video_submit_btn = gr.Button(
-                                value="Compute Normal", variant="primary"
-                            )
+                            video_submit_btn = gr.Button(value="Compute Normal", variant="primary")
                             video_reset_btn = gr.Button(value="Reset")
                     with gr.Column():
                         processed_frames = ImageSlider(
@@ -330,16 +319,15 @@ def run_demo_server(pipe):
                         )
                 Examples(
                     fn=process_pipe_video,
-                    examples=sorted([
-                        os.path.join("files", "video", name)
-                        for name in os.listdir(os.path.join("files", "video"))
-                    ]),
+                    examples=sorted(
+                        [os.path.join("files", "video", name) for name in os.listdir(os.path.join("files", "video"))]
+                    ),
                     inputs=[video_input],
                     outputs=[processed_frames, video_output_files],
                     directory_name="examples_video",
                     cache_examples=False,
                 )
-                
+
             with gr.Tab("Panorama"):
                 with gr.Column():
                     gr.Markdown("Functionality coming soon on June.10th")
@@ -351,7 +339,7 @@ def run_demo_server(pipe):
             with gr.Tab("Normal Mapping"):
                 with gr.Column():
                     gr.Markdown("Functionality coming soon on June.24th")
-            
+
             with gr.Tab("Normal SuperResolution"):
                 with gr.Column():
                     gr.Markdown("Functionality coming soon on June.30th")
@@ -418,18 +406,24 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     x_start_pipeline = YOSONormalsPipeline.from_pretrained(
-        'Stable-X/yoso-normal-v0-2', trust_remote_code=True, variant="fp16", torch_dtype=torch.float16).to(device)
-    pipe = StableNormalPipeline.from_pretrained('Stable-X/stable-normal-v0-1', trust_remote_code=True,
-                                                variant="fp16", torch_dtype=torch.float16,
-                                                scheduler=HEURI_DDIMScheduler(prediction_type='sample', 
-                                                                              beta_start=0.00085, beta_end=0.0120, 
-                                                                              beta_schedule = "scaled_linear"))
+        "Stable-X/yoso-normal-v0-2", trust_remote_code=True, variant="fp16", torch_dtype=torch.float16
+    ).to(device)
+    pipe = StableNormalPipeline.from_pretrained(
+        "Stable-X/stable-normal-v0-1",
+        trust_remote_code=True,
+        variant="fp16",
+        torch_dtype=torch.float16,
+        scheduler=HEURI_DDIMScheduler(
+            prediction_type="sample", beta_start=0.00085, beta_end=0.0120, beta_schedule="scaled_linear"
+        ),
+    )
     pipe.x_start_pipeline = x_start_pipeline
     pipe.to(device)
     pipe.prior.to(device, torch.float16)
-    
+
     try:
         import xformers
+
         pipe.enable_xformers_memory_efficient_attention()
     except:
         pass  # run without xformers

@@ -15,4 +15,5 @@ pip install --no-cache-dir \
     loguru \
     pre-commit \
     pytorch_memlab \
-    memory_profiler
+    memory_profiler \
+    ruff==0.5.7
